@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Penghitung Warung - Cloud Storage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: manipulation;
+            background-color: #f8fafc;
+        }
+        .btn-active:active {
+            transform: scale(0.96);
+        }
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .loading-shimmer {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex justify-center items-start min-h-screen">
+    <div class="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200">
+        
+        <!-- Bagian Atas: Dashboard Saldo -->
+        <div class="bg-slate-900 p-8 text-white relative">
+            <!-- Status Koneksi -->
+            <div id="statusCloud" class="absolute top-4 right-6 flex items-center gap-1.5 opacity-50">
+                <div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                <span class="text-[8px] font-black uppercase tracking-wider">Menghubungkan...</span>
+            </div>
+
+            <div class="text-center mb-8">
+                <h1 class="text-[10px] font-black opacity-40 uppercase tracking-[0.3em] mb-1">Saldo Bersih (Cloud)</h1>
+                <p id="totalSaldo" class="text-5xl font-black tracking-tighter">Rp 0</p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-emerald-500/10 backdrop-blur-sm rounded-2xl p-4 border border-emerald-500/20">
+                    <p class="text-[9px] uppercase font-black text-emerald-400 mb-1">📈 Pemasukan</p>
+                    <p id="totalMasuk" class="text-lg font-bold italic">...</p>
+                </div>
+                <div class="bg-rose-500/10 backdrop-blur-sm rounded-2xl p-4 border border-rose-500/20">
+                    <p class="text-[9px] uppercase font-black text-rose-400 mb-1">📉 Pengeluaran</p>
+                    <p id="totalKeluar" class="text-lg font-bold italic">...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bagian Tengah: Input & Kontrol -->
+        <div class="p-8">
+            <div class="mb-6 relative">
+                <span class="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 font-bold text-xl">Rp</span>
+                <input type="number" id="inputNominal" 
+                    class="w-full text-4xl font-black pl-16 pr-6 py-6 bg-slate-50 border-2 border-slate-100 rounded-3xl focus:border-blue-500 focus:outline-none transition-all placeholder:text-slate-200 text-slate-800"
+                    placeholder="0"
+                    inputmode="numeric">
+            </div>
+            
+            <div class="grid grid-cols-3 gap-2 mb-6">
+                <button id="btnTunai" onclick="setMode('Tunai')" class="py-3 rounded-xl text-[10px] font-black transition-all border-2 border-slate-900 bg-slate-900 text-white btn-active">
+                    💵 TUNAI
+                </button>
+                <button id="btnQRIS" onclick="setMode('QRIS')" class="py-3 rounded-xl text-[10px] font-black transition-all border-2 border-slate-100 bg-white text-slate-400 btn-active">
+                    📱 QRIS
+                </button>
+                <button id="btnKeluar" onclick="setMode('Keluar')" class="py-3 rounded-xl text-[10px] font-black transition-all border-2 border-slate-100 bg-white text-slate-400 btn-active">
+                    💸 KELUAR
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <button id="mainBtn" onclick="simpanTransaksi()" class="btn-active w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl text-xl shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-3">
+                    SIMPAN KE CLOUD
+                </button>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="bagikanLaporan()" class="btn-active flex items-center justify-center gap-2 bg-slate-900 text-white font-bold py-4 rounded-2xl">
+                        Laporan
+                    </button>
+                    <button onclick="hapusTerakhir()" class="btn-active flex items-center justify-center gap-2 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl">
+                        Batal 1
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bagian Bawah: Riwayat -->
+        <div class="bg-slate-50 border-t border-slate-100">
+            <div class="px-8 py-5 flex justify-between items-center">
+                <h3 class="font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Riwayat Cloud</h3>
+                <button onclick="resetData()" class="text-[10px] text-rose-500 font-bold uppercase hover:underline">Hapus Semua</button>
+            </div>
+            <div id="containerRiwayat" class="max-h-72 overflow-y-auto pb-8 custom-scrollbar">
+                <div class="p-12 flex flex-col items-center gap-4">
+                    <div class="w-12 h-12 rounded-full border-4 border-slate-200 border-t-blue-500 animate-spin"></div>
+                    <p class="text-xs text-slate-400 font-bold">Memuat data dari awan...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-8 py-4 rounded-full text-sm font-black shadow-2xl opacity-0 transition-all transform translate-y-4 pointer-events-none z-50">
+        DATA TERSIMPAN
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Setup
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'warung-app';
+
+        let currentUser = null;
+        let transaksiLocal = [];
+        let modeAktif = 'Tunai';
+
+        // 1. Autentikasi
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth Error:", error);
+                document.getElementById('statusCloud').innerHTML = `
+                    <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                    <span class="text-[8px] font-black text-red-500 uppercase">Offline</span>
+                `;
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('statusCloud').innerHTML = `
+                    <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                    <span class="text-[8px] font-black text-emerald-400 uppercase">Cloud Aktif</span>
+                `;
+                setupDataListener();
+            }
+        });
+
+        // 2. Listener Data (Real-time)
+        function setupDataListener() {
+            if (!currentUser) return;
+
+            // Koleksi data: /artifacts/{appId}/users/{userId}/transaksi
+            const dataRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'transaksi');
+            
+            // RULE 2: No complex queries, fetch simple then sort in JS
+            onSnapshot(dataRef, (snapshot) => {
+                const data = [];
+                snapshot.forEach(doc => {
+                    data.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort by timestamp descending
+                transaksiLocal = data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                updateDisplay();
+            }, (error) => {
+                console.error("Snapshot Error:", error);
+            });
+        }
+
+        // 3. Fungsi Simpan
+        window.simpanTransaksi = async () => {
+            const input = document.getElementById('inputNominal');
+            const val = parseInt(input.value);
+
+            if (!val || val <= 0 || !currentUser) return;
+
+            const d = new Date();
+            const waktu = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+            try {
+                const dataRef = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'transaksi');
+                await addDoc(dataRef, {
+                    nominal: val,
+                    tipe: modeAktif,
+                    waktu: waktu,
+                    timestamp: serverTimestamp()
+                });
+
+                input.value = '';
+                input.focus();
+                notify("BERHASIL DISIMPAN KE CLOUD!");
+            } catch (e) {
+                notify("GAGAL MENYIMPAN");
+            }
+        };
+
+        // 4. Fungsi Hapus Terakhir
+        window.hapusTerakhir = async () => {
+            if (transaksiLocal.length === 0) return;
+            if (!confirm("Hapus transaksi terakhir di cloud?")) return;
+
+            try {
+                const lastId = transaksiLocal[0].id; // Karena sudah di-sort descending
+                const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'transaksi', lastId);
+                await deleteDoc(docRef);
+                notify("DATA DIHAPUS");
+            } catch (e) {
+                notify("GAGAL MENGHAPUS");
+            }
+        };
+
+        // 5. Fungsi Reset
+        window.resetData = async () => {
+            if (transaksiLocal.length === 0) return;
+            if (!confirm("HAPUS SEMUA DATA PERMANEN DARI CLOUD? Tindakan ini tidak bisa dibatalkan.")) return;
+
+            try {
+                notify("MENGHAPUS SEMUA...");
+                for (const t of transaksiLocal) {
+                    const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'transaksi', t.id);
+                    await deleteDoc(docRef);
+                }
+            } catch (e) {
+                notify("GAGAL RESET");
+            }
+        };
+
+        // UI Helpers
+        window.setMode = (mode) => {
+            modeAktif = mode;
+            const btnT = document.getElementById('btnTunai');
+            const btnQ = document.getElementById('btnQRIS');
+            const btnK = document.getElementById('btnKeluar');
+            const mainB = document.getElementById('mainBtn');
+
+            [btnT, btnQ, btnK].forEach(b => {
+                b.className = "py-3 rounded-xl text-[10px] font-black transition-all border-2 border-slate-100 bg-white text-slate-400 btn-active";
+            });
+
+            if (mode === 'Tunai') {
+                btnT.className = "py-3 rounded-xl text-[10px] font-black transition-all border-2 border-slate-900 bg-slate-900 text-white btn-active";
+                mainB.className = "btn-active w-full bg-blue-600 text-white font-black py-5 rounded-2xl text-xl shadow-lg shadow-blue-200 transition-all";
+            } else if (mode === 'QRIS') {
+                btnQ.className = "py-3 rounded-xl text-[10px] font-black transition-all border-2 border-cyan-500 bg-cyan-500 text-white btn-active";
+                mainB.className = "btn-active w-full bg-cyan-600 text-white font-black py-5 rounded-2xl text-xl shadow-lg shadow-cyan-200 transition-all";
+            } else {
+                btnK.className = "py-3 rounded-xl text-[10px] font-black transition-all border-2 border-rose-500 bg-rose-500 text-white btn-active";
+                mainB.className = "btn-active w-full bg-rose-600 text-white font-black py-5 rounded-2xl text-xl shadow-lg shadow-rose-200 transition-all";
+            }
+        };
+
+        function formatRupiah(n) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency', currency: 'IDR', maximumFractionDigits: 0
+            }).format(n).replace("Rp", "Rp ");
+        }
+
+        function notify(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.classList.remove('opacity-0', 'translate-y-4');
+            t.classList.add('opacity-100', 'translate-y-0');
+            setTimeout(() => {
+                t.classList.add('opacity-0', 'translate-y-4');
+                t.classList.remove('opacity-100', 'translate-y-0');
+            }, 2000);
+        }
+
+        function updateDisplay() {
+            const masuk = transaksiLocal.filter(t => t.tipe !== 'Keluar').reduce((a, b) => a + b.nominal, 0);
+            const keluar = transaksiLocal.filter(t => t.tipe === 'Keluar').reduce((a, b) => a + b.nominal, 0);
+            const saldo = masuk - keluar;
+
+            document.getElementById('totalSaldo').innerText = formatRupiah(saldo);
+            document.getElementById('totalMasuk').innerText = formatRupiah(masuk);
+            document.getElementById('totalKeluar').innerText = formatRupiah(keluar);
+
+            const container = document.getElementById('containerRiwayat');
+            if (transaksiLocal.length === 0) {
+                container.innerHTML = '<div class="py-12 text-center text-slate-300 text-xs italic">Belum ada aktivitas di cloud...</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            transaksiLocal.forEach((item, index) => {
+                const isKeluar = item.tipe === 'Keluar';
+                const div = document.createElement('div');
+                div.className = 'px-8 py-4 flex justify-between items-center border-b border-slate-100 bg-white last:border-0';
+                
+                let iconColor = "bg-amber-100 text-amber-600";
+                if(item.tipe === 'QRIS') iconColor = "bg-cyan-100 text-cyan-600";
+                if(isKeluar) iconColor = "bg-rose-100 text-rose-600";
+
+                div.innerHTML = `
+                    <div class="flex flex-col">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-[8px] font-black px-2 py-0.5 rounded ${iconColor}">
+                                ${item.tipe.toUpperCase()}
+                            </span>
+                            <span class="text-[10px] font-bold text-slate-400">${item.waktu || 'Baru'}</span>
+                        </div>
+                        <span class="font-black text-xl ${isKeluar ? 'text-rose-600' : 'text-slate-800'}">
+                            ${isKeluar ? '-' : ''}${formatRupiah(item.nominal)}
+                        </span>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        window.bagikanLaporan = () => {
+            if (transaksiLocal.length === 0) return;
+            const masuk = transaksiLocal.filter(t => t.tipe !== 'Keluar').reduce((a, b) => a + b.nominal, 0);
+            const keluar = transaksiLocal.filter(t => t.tipe === 'Keluar').reduce((a, b) => a + b.nominal, 0);
+            const saldo = masuk - keluar;
+            const tgl = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+
+            let teks = `*LAPORAN WARUNG (CLOUD)*\n📅 ${tgl}\n`;
+            teks += `━━━━━━━━━━━━━━━━\n`;
+            teks += `💰 *SALDO BERSIH: ${formatRupiah(saldo)}*\n\n`;
+            teks += `📈 Pemasukan: ${formatRupiah(masuk)}\n`;
+            teks += `📉 Pengeluaran: ${formatRupiah(keluar)}\n`;
+            teks += `━━━━━━━━━━━━━━━━\n\n`;
+            
+            [...transaksiLocal].reverse().forEach((t, i) => {
+                const icon = t.tipe === 'Keluar' ? '🔴' : '🟢';
+                teks += `${i+1}. ${icon} [${t.waktu}] ${t.tipe}: ${t.tipe === 'Keluar' ? '-' : ''}${formatRupiah(t.nominal)}\n`;
+            });
+
+            if (navigator.share) {
+                navigator.share({ text: teks });
+            } else {
+                const el = document.createElement('textarea');
+                el.value = teks;
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                notify("LAPORAN DISALIN!");
+            }
+        };
+
+        // Start
+        initAuth();
+    </script>
+</body>
+</html>
